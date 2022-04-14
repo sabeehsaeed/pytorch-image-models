@@ -28,7 +28,7 @@ import torch.nn as nn
 import torchvision.utils
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
 
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, roc_auc_score
 
 from timm.data import create_dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
 from timm.models import create_model, safe_model_name, resume_checkpoint, load_checkpoint,\
@@ -781,6 +781,7 @@ def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix='')
     top1_m = AverageMeter()
     top5_m = AverageMeter()
     top1_f1 = AverageMeter()
+    top1_roc = AverageMeter()
     model.eval()
 
     end = time.time()
@@ -808,6 +809,8 @@ def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix='')
             loss = loss_fn(output, target)
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
             f1 = f1_score(target.cpu().detach().numpy(), torch.argmax(output, dim=1).cpu().detach().numpy(), average='weighted', zero_division=1)
+            roc = roc_auc_score(target.cpu().detach().numpy(), torch.argmax(output, dim=1).cpu().detach().numpy(), average='micro', zero_division=1)
+            
             if args.distributed:
                 reduced_loss = reduce_tensor(loss.data, args.world_size)
                 acc1 = reduce_tensor(acc1, args.world_size)
@@ -821,6 +824,7 @@ def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix='')
             top1_m.update(acc1.item(), output.size(0))
             top5_m.update(acc5.item(), output.size(0))
             top1_f1.update(f1, output.size(0))
+            top1_roc.update(roc, output.size(0))
 
             batch_time_m.update(time.time() - end)
             end = time.time()
@@ -832,9 +836,10 @@ def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix='')
                     'Loss: {loss.val:>7.4f} ({loss.avg:>6.4f})  '
                     'Acc@1: {top1.val:>7.4f} ({top1.avg:>7.4f})  '
                     'Acc@5: {top5.val:>7.4f} ({top5.avg:>7.4f})'
-                    'F1@1: {f1.val:>7.4f} ({f1.avg:>7.4f})'.format(
+                    'F1@1: {f1.val:>7.4f} ({f1.avg:>7.4f})'
+                    'ROC@1: {roc.val:>7.4f} ({roc.avg:>7.4f})'.format(
                         log_name, batch_idx, last_idx, batch_time=batch_time_m,
-                        loss=losses_m, top1=top1_m, top5=top5_m, f1=top1_f1))
+                        loss=losses_m, top1=top1_m, top5=top5_m, f1=top1_f1, roc = top1_roc))
 
     metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg), ('f1', top1_f1.avg)])
 
