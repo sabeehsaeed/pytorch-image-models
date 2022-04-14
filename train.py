@@ -809,7 +809,7 @@ def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix='')
             loss = loss_fn(output, target)
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
             f1 = f1_score(target.cpu().detach().numpy(), torch.argmax(output, dim=1).cpu().detach().numpy(), average='weighted', zero_division=1)
-            roc = roc_auc_score(target.cpu().detach().numpy(), torch.argmax(output, dim=1).cpu().detach().numpy(), average='micro')
+            roc = roc_auc_score(torch.argmax(output, dim=1).cpu().detach().numpy(), target.cpu().detach().numpy(), average='micro')
             
             if args.distributed:
                 reduced_loss = reduce_tensor(loss.data, args.world_size)
